@@ -227,3 +227,4 @@ cache
 mlruns/
 mlflow.db
 data/
+features/
