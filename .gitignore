@@ -228,3 +228,4 @@ mlruns/
 mlflow.db
 data/
 features/
+model/
