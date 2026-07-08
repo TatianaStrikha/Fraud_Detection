@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детекция фрода</title>
+</head>
+<body style="font-family: Arial, sans-serif; background: #ffffff; color: #333333; margin: 0; padding: 20px; line-height: 1.5;">
+
+    <div style="max-w: 1000px; margin: 0 auto;">
+
+        <!-- Заголовок и Описание сервиса -->
+        <h1 style="border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 5px;">
+            Система антифрода транзакций для онлайн магазинов
+        </h1>
+        <p style="color: #666; font-size: 1.1em; margin-top: 0; margin-bottom: 25px;">
+        </p>
+
+        <!-- РАЗДЕЛ 1: УПРАВЛЕНИЕ ЗАГРУЗКОЙ ДАННЫХ -->
+        <h2 style="margin-top: 30px;">Управление потоками данных</h2>
+
+        <!-- Контейнер для двух блоков загрузки -->
+        <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+
+            <!-- Блок 1: Поток транзакций -->
+            <div style="flex: 1; border: 1px solid #ccc; padding: 20px; background: #f9f9f9; border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <h3 style="margin-top: 0;">Этап 1: Поток транзакций</h3>
+                    <p style="font-size: 0.85em; color: #666;">
+                        Загрузка файла транзакций <code style="background: #eee; padding: 2px 4px; border-radius: 4px;">demo_test.csv</code> из папки
+                        <code style="background: #eee; padding: 2px 4px; border-radius: 4px;">demo_data</code>.
+                        Система принимает параметры платежей и направляет их на независимый ML-анализ воркеров.
+                    </p>
+                </div>
+
+                <form id="uploadForm" style="margin-top: 15px;">
+                    <input type="file" id="testFile" accept=".csv" required style="display: block; margin-bottom: 15px; font-size: 0.9em;"><br>
+                    <button type="submit" id="uploadBtn" style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.95em;">
+                        Запустить проверку транзакций
+                    </button>
+                </form>
+
+                <!-- Прогресс-бар -->
+                <div id="progressContainer" style="display: none; margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 5px;">
+                        <span id="progressStatus" style="color: #555;">Загрузка данных...</span>
+                        <strong id="progressPercent" style="color: #007bff;">0%</strong>
+                    </div>
+                    <div style="width: 100%; background: #e9ecef; border-radius: 4px; height: 10px; overflow: hidden;">
+                        <div id="progressBar" style="background: #007bff; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Блок 2: Архивная разметка -->
+            <div style="flex: 1; border: 1px solid #ccc; padding: 20px; background: #f9f9f9; border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <h3 style="margin-top: 0;">Этап 2: Догрузка архивной разметки</h3>
+                    <p style="font-size: 0.85em; color: #666;">
+                        Загрузка файла разметки <code style="background: #eee; padding: 2px 4px; border-radius: 4px;">demo_target.csv</code> из папки
+                        <code style="background: #eee; padding: 2px 4px; border-radius: 4px;">demo_data</code>.
+                        Необходима для сверки вынесенных моделью вердиктов с реальностью.
+                    </p>
+                </div>
+
+                <form id="feedbackForm" style="margin-top: 15px;">
+                    <input type="file" id="targetFile" accept=".csv" required style="display: block; margin-bottom: 15px; font-size: 0.9em;"><br>
+                    <button type="submit" id="feedbackBtn" style="width: 100%; padding: 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.95em;">
+                        Сохранить разметку в БД
+                    </button>
+                </form>
+            </div>
+
+        </div>
+
+        <hr style="margin: 30px 0; border: 0; border-top: 1px solid #ddd;">
+
+        <!-- РАЗДЕЛ 2: АНАЛИТИЧЕСКИЙ ДАШБОРД -->
+        <h2>Бизнес-монитор эффективности системы</h2>
+
+        <!-- Базовые карточки (Счетчики строк) -->
+        <div style="display: flex; gap: 20px; margin-bottom: 25px;">
+            <div style="flex: 1; border: 1px solid #ddd; padding: 15px; background: #fafafa; border-radius: 6px; text-align: center;">
+                <span style="font-size: 0.85em; text-transform: uppercase; color: #777; font-weight: bold; tracking-wider: 1px;">Всего обработано</span>
+                <div id="statTotal" style="font-size: 1.8em; font-weight: bold; margin-top: 5px; font-family: monospace;">0</div>
+            </div>
+            <div style="flex: 1; border: 1px solid #ddd; padding: 15px; background: #fafafa; border-radius: 6px; text-align: center; border-top: 4px solid #dc3545;">
+                <span style="font-size: 0.85em; text-transform: uppercase; color: #777; font-weight: bold;">Модель заблокировала (Fraud)</span>
+                <div id="statFraud" style="font-size: 1.8em; font-weight: bold; margin-top: 5px; color: #dc3545; font-family: monospace;">0</div>
+            </div>
+            <div style="flex: 1; border: 1px solid #ddd; padding: 15px; background: #fafafa; border-radius: 6px; text-align: center; border-top: 4px solid #28a745;">
+                <span style="font-size: 0.85em; text-transform: uppercase; color: #777; font-weight: bold;">Модель одобрила (Legit)</span>
+                <div id="statLegit" style="font-size: 1.8em; font-weight: bold; margin-top: 5px; color: #28a745; font-family: monospace;">0</div>
+            </div>
+        </div>
+
+        <!-- Таблица матрицы ошибок (Error Analysis) -->
+        <h3 style="margin-top: 30px; margin-bottom: 15px;">
+            Матрица ошибок
+            <button onclick="updateDashboard()" style="margin-left: 15px; padding: 4px 10px; background: #f4f4f4; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.8em; font-weight: bold;">
+                Обновить статистику
+            </button>
+        </h3>
+
+        <table border="1" cellpadding="12" cellspacing="0" style="width: 100%; border-collapse: collapse; border: 1px solid #ddd; text-align: center; margin-bottom: 40px;">
+            <thead>
+                <tr style="background: #f2f2f2; font-size: 0.95em;">
+                    <th style="width: 25%;">True Negatives (TN)</th>
+                    <th style="width: 25%;">False Positives (FP)</th>
+                    <th style="width: 25%;">False Negatives (FN)</th>
+                    <th style="width: 25%;">True Positives (TP)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="background: #fdfdfd;">
+                        <span id="mxTN" style="font-size: 1.6em; font-weight: bold; font-family: monospace;">0</span>
+                        <div style="font-size: 0.75em; color: #666; margin-top: 5px;">Легитимные операции, одобренные системой</div>
+                    </td>
+                    <td style="background: #fff5f5;">
+                        <span id="mxFP" style="font-size: 1.6em; font-weight: bold; color: #e53e3e; font-family: monospace;">0</span>
+                        <div style="font-size: 0.75em; color: #c53030; margin-top: 5px;">Ложные срабатывания</div>
+                    </td>
+                    <td style="background: #fff5f5;">
+                        <span id="mxFN" style="font-size: 1.6em; font-weight: bold; color: #e53e3e; font-family: monospace;">0</span>
+                        <div style="font-size: 0.75em; color: #c53030; margin-top: 5px;">Пропущенный фрод</div>
+                    </td>
+                    <td style="background: #f8fdf9;">
+                        <span id="mxTP" style="font-size: 1.6em; font-weight: bold; color: #28a745; font-family: monospace;">0</span>
+                        <div style="font-size: 0.75em; color: #1e7e34; margin-top: 5px;">Мошеннические транзакции, успешно пойманные моделью</div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <!-- ИНТЕРФЕЙСНЫЙ СКРИПТ (СВЯЗКА С FASTAPI) -->
+    <script>
+        let progressInterval = null;
+
+        // ЭТАП 1: Отправка сырых транзакций (Поток в реальном времени из demo_test.csv)
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('testFile');
+
+            if (!fileInput.files.length) {
+                alert('Пожалуйста, выберите файл demo_test.csv');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            // Блокируем интерфейс во время загрузки тяжелого пакета
+            document.getElementById('uploadBtn').disabled = true;
+            document.getElementById('uploadBtn').innerText = 'Передача файла на бэкенд...';
+            document.getElementById('progressContainer').style.display = 'block';
+
+            try {
+                const response = await fetch('/api/antifraud/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok && data.session_id) {
+                    document.getElementById('uploadBtn').innerText = 'Поток транзакций запущен';
+                    // Начинаем раз в секунду опрашивать прогресс-бар
+                    startProgressPolling(data.session_id);
+                } else {
+                    alert('Ошибка запуска: ' + (data.detail || 'Неизвестная ошибка'));
+                    resetUploadButton();
+                }
+            } catch (err) {
+                alert('Сетевая ошибка при загрузке: ' + err.message);
+                resetUploadButton();
+            }
+        });
+
+        function resetUploadButton() {
+            document.getElementById('uploadBtn').disabled = false;
+            document.getElementById('uploadBtn').innerText = 'Запустить антифрод поток';
+        }
+
+        // Функция опроса прогресса буферизации
+        function startProgressPolling(sessionId) {
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/antifraud/progress/${sessionId}`);
+                    const data = await response.json();
+
+                    const percent = data.progress || 0;
+
+                    // Визуально двигаем бар и обновляем проценты
+                    document.getElementById('progressBar').style.width = percent + '%';
+                    document.getElementById('progressPercent').innerText = Math.round(percent) + '%';
+
+                    // Меняем текст в зависимости от этапа
+                    if (percent > 0 && percent < 99) {
+                        document.getElementById('progressStatus').innerText = 'Загрузка данных...';
+                    }
+
+                    if (percent >= 99.0) {
+                        clearInterval(progressInterval); // Выключаем таймер опроса
+
+                        document.getElementById('progressBar').style.width = '100%';
+                        document.getElementById('progressPercent').innerText = '100%';
+                        document.getElementById('progressStatus').innerText = 'Загрузка данных успешно завершена.';
+
+                        // Запускаем фоновое обновление счетчиков дашборда
+                        startDashboardAutoUpdate();
+                    }
+                } catch (err) {
+                    console.error('Ошибка мониторинга прогресса:', err);
+                }
+            }, 1000);
+        }
+
+        // Автоматическое обновление счетчиков раз в 3 секунды
+        function startDashboardAutoUpdate() {
+            setInterval(async () => {
+                await updateDashboard();
+            }, 3000);
+        }
+
+        // ЭТАП 2: Догрузка архивных чарджбэков от банков (из demo_target.csv)
+        document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('targetFile');
+
+            if (!fileInput.files.length) {
+                alert('Пожалуйста, выберите файл demo_target.csv');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            document.getElementById('feedbackBtn').disabled = true;
+            document.getElementById('feedbackBtn').innerText = 'Загрузка разметки...';
+
+            try {
+                const response = await fetch('/api/antifraud/feedback', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('feedbackBtn').innerText = 'Разметка успешно загружена';
+                    // Мгновенно пересчитываем матрицу ошибок на экране
+                    await updateDashboard();
+                } else {
+                    alert('Ошибка интеграции разметки: ' + (data.detail || 'Неизвестная ошибка'));
+                    document.getElementById('feedbackBtn').disabled = false;
+                    document.getElementById('feedbackBtn').innerText = 'Загрузить разметку';
+                }
+            } catch (err) {
+                alert('Ошибка сети: ' + err.message);
+                document.getElementById('feedbackBtn').disabled = false;
+                document.getElementById('feedbackBtn').innerText = 'Загрузить разметку';
+            }
+        });
+
+        // Запрос аналитики дашборда из СУБД PostgreSQL
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/antifraud/dashboard');
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Обновляем базовые счетчики строк
+                    document.getElementById('statTotal').innerText = data.total_checked.toLocaleString('ru-RU');
+                    document.getElementById('statFraud').innerText = data.total_fraud_detected.toLocaleString('ru-RU');
+                    document.getElementById('statLegit').innerText = data.total_legit_detected.toLocaleString('ru-RU');
+
+                    // Раскрываем матрицу сопряженности для Error Analysis
+                    document.getElementById('mxTN').innerText = data.true_negatives.toLocaleString('ru-RU');
+                    document.getElementById('mxFP').innerText = data.false_positives.toLocaleString('ru-RU');
+                    document.getElementById('mxFN').innerText = data.false_negatives.toLocaleString('ru-RU');
+                    document.getElementById('mxTP').innerText = data.true_positives.toLocaleString('ru-RU');
+
+                    return true;
+                }
+            } catch (err) {
+                console.error('Ошибка обновления дашборда:', err);
+            }
+            return false;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+services:
+  # Бэкенд-приложение FastAPI + веб-сайт
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: antifraud-app
+    restart: on-failure
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s  # Пауза в 5 секунд между попытками перезапуска при сбое
+    env_file:
+      - .env
+    volumes:
+      - .:/workspace  # Монтируем корень, чтобы изменения в коде подтягивались на лету
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - antifraud-network
+    healthcheck:
+      # Стучимся на эндпоинт для проверки здоровья
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/antifraud/dashboard')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # База данных PostgreSQL 16
+  database:
+    image: postgres:16-alpine
+    container_name: antifraud-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - ./database:/var/lib/postgresql/data  # Сохраняем логи транзакций на жестком диске
+    networks:
+      - antifraud-network
+    healthcheck:
+      # Проверяем доступность базы под динамическим пользователем из .env
+      test: ["CMD", "pg_isready", "-q", "-d", "${DB_NAME}", "-U", "${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Распределенные ML-воркеры для инференса CatBoost
+  ml_worker:
+    build:
+      context: .
+      dockerfile: ./ml_worker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/workspace
+    volumes:
+      - .:/workspace  # Монтируем корень, чтобы воркер видел глобальный config.py
+      # Пробрасываем локальную папку с весами CatBoost и artifacts.pkl внутрь контейнера
+      - ./model:/model:ro
+    working_dir: /workspace
+    command: python ml_worker/main.py
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - antifraud-network
+    deploy:
+      replicas: 2  # Автоматический запуск 2 параллельных воркеров для Highload-обработки
+
+  # Обратный прокси-сервер Nginx (Маршрутизатор трафика)
+  nginx:
+    image: nginx:latest
+    container_name: antifraud-nginx
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - antifraud-network
+
+  # Брокер сообщений RabbitMQ с панелью управления
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: antifraud-mq
+    restart: on-failure
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    ports:
+      - "15672:15672"  # Веб-панель RabbitMQ Management (логин/пароль из .env)
+      - "5672:5672"    # Порт для AMQP-трафика воркеров
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq  # Сохраняем состояние очередей
+    networks:
+      - antifraud-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+
+networks:
+  antifraud-network:
+    name: antifraud-network
+    driver: bridge
+
+
+# docker-compose down
+# docker compose down -v
+# docker-compose up --build -d
+# docker compose logs -f
+
+# docker-compose restart
+
+# docker-compose stop
+# docker-compose start
+
+# docker compose logs -f ml_worker
+# docker-compose up --scale ml_worker=2
+
+# docker system prune -a --volumes

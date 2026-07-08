@@ -1,0 +1,23 @@
+# Бэкенд и Веб-интерфейс
+fastapi
+uvicorn
+jinja2
+python-multipart
+pydantic
+pydantic-settings
+
+# База данных и Брокер сообщений
+sqlalchemy
+asyncpg
+aio-pika
+
+# Аналитика и Машинное обучение (ML)
+catboost==1.2.8
+pandas==2.2.2
+numpy
+
+# Тестирование
+pytest
+pytest-asyncio
+httpx
+aiosqlite

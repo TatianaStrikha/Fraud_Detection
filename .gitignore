@@ -226,6 +226,8 @@ tmp
 cache
 mlruns/
 mlflow.db
-data/
-features/
-model/
+research/data/
+research/features/
+research/catboost_info
+database/
+rabbitmq/
