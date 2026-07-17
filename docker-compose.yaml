@@ -23,11 +23,11 @@ services:
       - antifraud-network
     healthcheck:
       # Стучимся на эндпоинт для проверки здоровья
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/antifraud/dashboard')"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/api/antifraud/dashboard')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 10s
 
   # База данных PostgreSQL 16
   database:
@@ -102,7 +102,7 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648  -rabbit vm_memory_high_watermark 0.7
     ports:
       - "15672:15672"  # Веб-панель RabbitMQ Management (логин/пароль из .env)
       - "5672:5672"    # Порт для AMQP-трафика воркеров
@@ -115,6 +115,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 3
+      start_period: 15s
 
 networks:
   antifraud-network:
