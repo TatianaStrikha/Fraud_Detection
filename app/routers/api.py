@@ -10,7 +10,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import logger, get_settings
-from app.database import get_session
+from app.database import get_session, init_db
 from app.crud.transactions import TransactionCRUD
 from app.crud.schemas import AnalyticsSchema
 
@@ -46,14 +46,25 @@ async def async_batch_processor(file_bytes: bytes, session_id: str, db: AsyncSes
     processing_sessions[session_id] = 0.0
 
     batch_size = 1000
+    all_batches_records = []
 
+    # Нарезаем и сохраняем все данные в БД
     for i in range(0, total_rows, batch_size):
         chunk_df = df.iloc[i:i + batch_size].copy()
         card_cols = ["card1", "card2", "card3", "card4", "card5", "card6"]
         chunk_df["card_uid"] = chunk_df[card_cols].astype(str).agg("_".join, axis=1)
         batch_records = chunk_df.where(pd.notnull(chunk_df), None).to_dict(orient="records")
+        # Сохраняем батч в базу
         await TransactionCRUD.create(db, batch_records)
+        # Запоминаем батч, чтобы отправить в RabbitMQ позже
+        all_batches_records.append((i, chunk_df, batch_records))
 
+    # Записываем все даные в БД ло запуска в очередь
+    await db.commit()
+    logger.info(f"{total_rows} строк успешно зафиксированы в PostgreSQL. Запуск RabbitMQ...")
+
+    #  Отправляем задачи воркерам и обновляем прогресс
+    for i, chunk_df, batch_records in all_batches_records:
         rabbitmq_payload = {
             "session_id": session_id,
             "transactions": batch_records
@@ -63,7 +74,7 @@ async def async_batch_processor(file_bytes: bytes, session_id: str, db: AsyncSes
         current_progress = round(((i + len(chunk_df)) / total_rows) * 100, 1)
         processing_sessions[session_id] = min(current_progress, 99.0)
 
-    logger.info(f"Все {total_rows} строк отправлены в RabbitMQ.")
+    logger.info(f"Все задачи для сессии {session_id} успешно распределены по воркерам.")
 
 
 @api_router.post("/antifraud/upload")
@@ -122,4 +133,23 @@ async def get_dashboard_data(db: AsyncSession = Depends(get_session)):
     """Эндпоинт дашборда. Возвращает агрегированные метрики."""
     analytics_data = await TransactionCRUD.analytics(db)
     return analytics_data
+
+
+@api_router.post("/antifraud/reset")
+async def reset_demo_data(db: AsyncSession = Depends(get_session)):
+    """Полный сброс демо-данных."""
+    try:
+        # 1. Очищаем БД
+        await init_db(drop_all=True)
+
+        # 2. Полностью очищаем оперативную память словаря прогресс-бара
+        processing_sessions.clear()
+
+        logger.info("База данных успешно очищены.")
+        return {"status": "SUCCESS", "message": "Данные успешно сброшены."}
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Ошибка при очистке данных: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при очистке данных: {str(e)}")
 

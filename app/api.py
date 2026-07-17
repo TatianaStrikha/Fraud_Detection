@@ -18,11 +18,10 @@ async def lifespan(app: FastAPI):
     Срабатывает ровно один раз при старте FastAPI в Докере.
     """
     logger.info("Инициализация БД...")
-    logger.info(f"Проверка URL БД: {settings.DATABASE_URL}")  # УДАЛИТЬ
+    logger.info(f"Проверка URL БД: {settings.DATABASE_URL}")
     try:
-        # drop_all=True очищает базу от старых логов при перезапуске,
-        # позволяя тестировать загрузку 118k строк с чистого листа.
-        await init_db(drop_all=False) # ЗАМЕНИТЬ НА True
+        # drop_all=True очищает базу от старых логов при перезапуске
+        await init_db(drop_all=True)
     except Exception as e:
         logger.error(f"Ошибка при инициализации БД: {str(e)}")
         raise
@@ -54,7 +53,7 @@ def create_application() -> FastAPI:
     )
 
     # Регистрация эндпоинтов антифрода
-    #  Веб-интерфейс (будет доступен по адресу http://localhost:8080/)
+    #  Веб-интерфейс (будет доступен по адресу http://localhost)
     app.include_router(web_router)
 
     # REST API

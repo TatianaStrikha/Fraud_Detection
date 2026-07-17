@@ -73,10 +73,25 @@
 
         </div>
 
+        <button id="reset-btn"
+        style="margin-top: 15px;
+               background-color: #f8d7da;
+               color: #c53030;
+               border: 1px solid #c53030;
+               border-radius: 4px;
+               padding: 6px 12px;
+               cursor: pointer;
+               transition: background-color 0.2s;"
+        onmouseover="this.style.backgroundColor='#f1b0b7'"
+        onmouseout="this.style.backgroundColor='#f8d7da'">
+            Сбросить демо-данные
+        </button>
+
+
         <hr style="margin: 30px 0; border: 0; border-top: 1px solid #ddd;">
 
         <!-- РАЗДЕЛ 2: АНАЛИТИЧЕСКИЙ ДАШБОРД -->
-        <h2>Бизнес-монитор эффективности системы</h2>
+        <h2>Монитор эффективности системы</h2>
 
         <!-- Базовые карточки (Счетчики строк) -->
         <div style="display: flex; gap: 20px; margin-bottom: 25px;">
@@ -97,9 +112,6 @@
         <!-- Таблица матрицы ошибок (Error Analysis) -->
         <h3 style="margin-top: 30px; margin-bottom: 15px;">
             Матрица ошибок
-            <button onclick="updateDashboard()" style="margin-left: 15px; padding: 4px 10px; background: #f4f4f4; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.8em; font-weight: bold;">
-                Обновить статистику
-            </button>
         </h3>
 
         <table border="1" cellpadding="12" cellspacing="0" style="width: 100%; border-collapse: collapse; border: 1px solid #ddd; text-align: center; margin-bottom: 40px;">
@@ -286,6 +298,55 @@
             }
             return false;
         }
+
+        // Очистка БД
+        document.getElementById('reset-btn').addEventListener('click', async () => {
+            if (!confirm('Вы уверены, что хотите полностью очистить базу данных и обнулить результаты текущего демо?')) {
+                return;
+            }
+
+            try {
+                // Отправляем POST-запрос на наш новый точный эндпоинт
+                const response = await fetch('/api/antifraud/reset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    alert('Система успешно очищена.');
+
+                    // 1. Возвращаем текстовые плашки статистики в ноль
+                    if (document.getElementById('total-processed')) document.getElementById('total-processed').innerText = '0';
+                    if (document.getElementById('total-fraud')) document.getElementById('total-fraud').innerText = '0';
+                    if (document.getElementById('total-legit')) document.getElementById('total-legit').innerText = '0';
+
+                    // 2. Обнуляем визуальный прогресс-бар
+                    const progressBar = document.getElementById('progressContainer');
+                    if (progressBar) {
+                        progressBar.style.width = '0%';
+                        progressBar.innerText = '0%';
+                    }
+
+                    // 3. Делаем поля выбора файлов снова пустыми и активными
+                    const testInput = document.getElementById('test-file-input');
+                    const targetInput = document.getElementById('target-file-input');
+                    if (testInput) testInput.value = '';
+                    if (targetInput) targetInput.value = '';
+
+                    // 4. Перезагружаем страницу
+                    window.location.reload();
+
+                } else {
+                    const errorData = await response.json();
+                    alert('Ошибка при очистке: ' + errorData.detail);
+                }
+            } catch (error) {
+                console.error('Ошибка сети:', error);
+                alert('Не удалось связаться с сервером для сброса данных.');
+            }
+        });
     </script>
 </body>
 </html>

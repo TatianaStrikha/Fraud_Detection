@@ -24,18 +24,6 @@ def get_engine():
         )
     return get_engine._engine
 
-# def get_engine():
-#     """
-#     Возвращает один и тот же экземпляр движка.
-#     """
-#     if not hasattr(get_engine, "_engine"):
-#         # ВРЕМЕННО: включаем базу в памяти, чтобы запустить сайт без Докера
-#         get_engine._engine = create_async_engine(
-#             "sqlite+aiosqlite:///:memory:",
-#             echo=False
-#         )
-#     return get_engine._engine
-
 
 # Фабрика сессий
 def get_session_local():
