@@ -10,7 +10,7 @@ class CreateSchema(BaseModel):
     ЭТАП 1: Схема для потока сырых транзакций (из demo_test.csv).
     Валидирует 10 обязательных базовых полей для логики СУБД,
     остальные колонки принимает благодаря настройке extra='allow'.
-    Поля 'isFraud' здесь физически нет, что гарантирует слепой инференс модели.
+    Поля 'isFraud' здесь нет, что гарантирует слепой инференс модели.
     """
     TransactionID: int
     TransactionDT: int
@@ -28,7 +28,7 @@ class CreateSchema(BaseModel):
 class UpdateSchema(BaseModel):
     """
     ЭТАП 2: Схема для архивной разметки (из demo_target.csv).
-    Принимает только ID и истинную метку мошенничества для симуляции чарджбэков.
+    Принимает только ID и истинную метку мошенничества.
     """
     TransactionID: int
     isFraud: int
@@ -40,9 +40,9 @@ class AnalyticsSchema(BaseModel):
     Возвращает агрегированную СУБД статистику. Поля TP, FP, TN, FN пересчитаются
     и выведутся на экран только после того, как прилетит UpdateSchema.
     """
-    total_checked: int  # Всего проверено транзакций (118108)
+    total_checked: int  # Всего проверено транзакций
     total_fraud_detected: int  # Сколько фрода нашла модель (TP + FP)
-    total_legit_detected: int  # Сколько честных чеков одобрила модель (TN + FN)
+    total_legit_detected: int  # Сколько честных транзакций одобрила модель (TN + FN)
 
     # Поля для Error Analysis (заполняются только после загрузки разметки)
     true_positives: Optional[int] = 0

@@ -45,7 +45,7 @@ def load_ml_artifacts():
     model.load_model(model_path)
     logger.info("Веса CatBoost Classifier успешно загружены в память.")
 
-    # 2. Загружаем чертеж признаков
+    # 2. Загружаем список признаков
     with open(artifacts_path, "rb") as f:
         artifacts = pickle.load(f)
     logger.info(f"Артефакты предобработки загружены. Ожидаемая размерность: {len(artifacts['feature_names'])} фич.")
@@ -53,10 +53,9 @@ def load_ml_artifacts():
 
 async def process_card_profiles_and_get_deltas(transactions_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Финтех-магия: атомарное обновление времени карт в PostgreSQL (Upsert)
-    и расчет критического признака time_diff_card_uid для всего батча.
+    Обновление времени карт в PostgreSQL (Upsert) и расчет признака time_diff_card_uid.
     """
-    # Собираем уникальный uid для каждой строки батча (card1_card2_..._card6)
+    # Собираем уникальный uid для каждой строки (card1_card2_..._card6)
     card_cols = ["card1", "card2", "card3", "card4", "card5", "card6"]
     transactions_df["card_uid"] = transactions_df[card_cols].astype(str).agg("_".join, axis=1)
 
@@ -64,14 +63,12 @@ async def process_card_profiles_and_get_deltas(transactions_df: pd.DataFrame) ->
     transactions_df["time_diff_card_uid"] = -1.0
 
     async with engine.begin() as conn:
-        # Обходим строки батча. Благодаря пакетной обработке по 1000 строк,
-        # накладные расходы на итерации будут незаметны
         for idx, row in transactions_df.iterrows():
             uid = row["card_uid"]
             current_dt = row["TransactionDT"]
 
             # SQL-конструкция UPSERT: Создает карту, если ее нет. Если есть — обновляет время,
-            # но СУБД возвращает нам старый last_transaction_dt до перезаписи
+            # но СУБД возвращает старый last_transaction_dt до перезаписи
             query = text("""
                 INSERT INTO card_profiles (card_uid, last_transaction_dt)
                 VALUES (:uid, :current_dt)
@@ -85,7 +82,7 @@ async def process_card_profiles_and_get_deltas(transactions_df: pd.DataFrame) ->
             res = await conn.execute(query, {"uid": uid, "current_dt": current_dt})
             row_data = res.fetchone()
 
-            # Если строка вернулась, значит карта уже платила раньше. Считаем дельту времени.
+            # Если строка вернулась, считаем дельту времени.
             if row_data and row_data[0] is not None:
                 old_dt = row_data[0]
                 transactions_df.at[idx, "time_diff_card_uid"] = float(current_dt - old_dt)
@@ -95,7 +92,6 @@ async def process_card_profiles_and_get_deltas(transactions_df: pd.DataFrame) ->
 
 async def save_predictions_to_db(ids: list, scores: list, verdicts: list):
     """Пакетное сохранение вынесенных ML-вердиктов обратно в СУБД PostgreSQL"""
-    # Формируем структуру словарей для эффективного bulk-апдейта
     update_data = [
         {"t_id": int(i), "score": float(s), "verd": str(v)}
         for i, s, v in zip(ids, scores, verdicts)
@@ -114,7 +110,7 @@ async def on_message(message: aio_pika.IncomingMessage):
     """Главный асинхронный конвейер: срабатывает, когда RabbitMQ выдает задачу"""
     async with message.process():
         try:
-            # Расшифровываем JSON задачу из байт очереди
+            # Расшифровываем JSON задачу из очереди
             payload = json.loads(message.body.decode())
             session_id = payload["session_id"]
             raw_txs = payload["transactions"]
@@ -129,13 +125,13 @@ async def on_message(message: aio_pika.IncomingMessage):
             # Шаг 1: Идем в СУБД, обновляем профили карт и рассчитываем фичу time_diff_card_uid
             df = await process_card_profiles_and_get_deltas(df)
 
-            # Шаг 2: Feature Engineering «вслепую» на основе 434 пришедших фич Kaggle
-            # Расчитываем логарифм и час, как делали на этапе Baseline
+            # Шаг 2: Feature Engineering на основе 434 пришедших фич Kaggle
+            # Расчитываем логарифм и час, как на этапе Baseline
             df["Amt_log"] = np.log1p(df["TransactionAmt"])
             df["hour"] = (df["TransactionDT"] / 3600) % 24
 
             # Генерируем 10 нелинейных признаков OpenFE по математическим формулам из артефактов
-            # Внутри artifacts['openfe_formulas'] лежат текстовые инструкции вида: df['card1'] / df['TransactionAmt']
+            # Внутри artifacts['openfe_formulas'] лежат текстовые инструкции вида
             if "openfe_formulas" in artifacts:
                 for f_name, formula_expr in artifacts["openfe_formulas"].items():
                     try:
@@ -149,16 +145,15 @@ async def on_message(message: aio_pika.IncomingMessage):
                 if feature not in df.columns:
                     df[feature] = np.nan
 
-            # Шаг 3: Сверхбыстрая фильтрация избыточности и выравнивание порядка колонок
-            # Pandas оставляет строго те 111 фич, на которых учился CatBoost, отсекая лишние 300+
+            # Шаг 3: Фильтрация колонок
+            # Оставляем строго те 111 фич, на которых учился CatBoost, отсекая лишние
             final_features_df = df[artifacts["feature_names"]].copy()
 
             # Шаг 4: Заполнение реальных пропусков (NaN) историческими константами из Train
             final_features_df.fillna(artifacts["global_constants"], inplace=True)
 
-            # Шаг 5: Оптимизированный инференс CatBoost с эталонной защитой типов
+            # Шаг 5: Инференс CatBoost
             # 1. Извлекаем из самой модели точные имена категориальных фич, на которых она училась
-            # Это на 100% исключает ошибку "Feature is Float in model but marked different"
             cat_indices = model.get_cat_feature_indices()
             all_feature_names = model.feature_names_
             cat_features_names = [all_feature_names[idx] for idx in cat_indices if all_feature_names[idx] in final_features_df.columns]
@@ -168,12 +163,11 @@ async def on_message(message: aio_pika.IncomingMessage):
                 final_features_df[col] = final_features_df[col].astype(str).replace(['nan', 'None', '<NA>', 'NaN'], 'nan')
 
             # 3. Очищаем числовые колонки: принудительно переводим их в float,
-            # чтобы текстовые опечатки (если они есть) не ломали ядро CatBoost
             for col in final_features_df.columns:
                 if col not in cat_features_names:
                     final_features_df[col] = pd.to_numeric(final_features_df[col], errors='coerce')
 
-            # Передаем в Pool эталонную матрицу данных и список имен категориальных фич
+            # Передаем матрицу данных и список имен категориальных фич
             data_pool = Pool(data=final_features_df, cat_features=cat_features_names)
 
             # Предсказываем вероятности фрода (берем колонку класса 1)

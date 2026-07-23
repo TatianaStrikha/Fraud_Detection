@@ -1,7 +1,6 @@
-# pytest tests/test_api.py - запуск
 import pytest
 from app.crud.transactions import TransactionCRUD
-from app.routers.api import async_batch_processor # Импортируем наш фоновый процессор
+from app.routers.api import async_batch_processor # Импортируем фоновый процессор
 
 # Явно включаем асингулярный режим для этого файла
 pytestmark = pytest.mark.asyncio
@@ -18,7 +17,7 @@ async def test_web_homepage(client):
 
 async def test_antifraud_upload(client, db_session):
     """
-    2. ТЕСТ REST API (ЭТАП 1): Проверяет и эндпоинт, и прямую пакетную вставку в СУБД.
+    2. ТЕСТ REST API (ЭТАП 1): Проверяет эндпоинт и прямую пакетную вставку в СУБД.
     """
     csv_content = (
         "TransactionID,TransactionDT,TransactionAmt,ProductCD,card1,card2,card3,card4,card5,card6\n"
@@ -33,7 +32,7 @@ async def test_antifraud_upload(client, db_session):
     assert response.json()["status"] == "QUEUED"
 
     # Гарантируем выполнение бизнес-логики: принудительно прогоняем данные
-    # через процессор напрямую в тестовую базу db_session, исключая задержки потоков
+    # через процессор напрямую в тестовую базу db_session
     await async_batch_processor(csv_content.encode('utf-8'), "test_session", db_session)
 
     # Проверяем, что в базу успешно записались 2 строки
@@ -52,7 +51,6 @@ async def test_antifraud_feedback(client, db_session):
         "ProductCD": "W", "card1": 5555, "card_uid": "5555_None"
     }])
 
-    # фиксируем запись в базе данных, чтобы внешний HTTP-клиент смог её увидеть и обновить!
     await db_session.commit()
 
     # 2. Отправляем архивный файл с чарджбэком

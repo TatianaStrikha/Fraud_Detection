@@ -33,7 +33,7 @@ class TransactionCRUD:
     @staticmethod
     async def update(session: AsyncSession, feedback_data: List[Dict[str, Any]]):
         """
-        ЭТАП 2: Догрузка разметки истины из demo_target.csv (Симуляция чарджбэков).
+        ЭТАП 2: Догрузка разметки истины из demo_target.csv.
         Точечно обновляет поле is_fraud_real по ID транзакции.
         """
         if not feedback_data:
