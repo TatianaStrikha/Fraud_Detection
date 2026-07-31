@@ -7,18 +7,8 @@ ML-сервис, который защищает малый бизнес от м
 ---
 
 ## Демонстрация работы web-интерфейса
-1
 
-
-![](Demo_web.mp4)
-
----
-
-2
-
-<video controls width="100%">
-  <source src="Demo_web.mp4" type="video/mp4">
-</video>
+![](Demo_web.gif)
 
 ---
 
